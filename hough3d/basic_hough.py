@@ -4,7 +4,7 @@ import numba
 from .utils import reducedRepConversionMatrices, distancePointToLine, unravel_3d_index
 
 @numba.njit(cache=True)
-def hough3D(points, directionVectors, latticeSize=64, neighborDistance=0.01, minPointsPerLine=5):
+def hough3D(points, directionVectors, latticeSize=128, neighborDistance=0.01, minPointsPerLine=5):
     """
     Perform line detection on a 3D point cloud.
 
@@ -16,7 +16,8 @@ def hough3D(points, directionVectors, latticeSize=64, neighborDistance=0.01, min
         4. Perform linear regression on the nearby points to refine the line.
         5. Update which points are nearby to the line based on the updated line (NEW).
         6. Have all of the points that are part of this line reverse their vote.
-        7. Repeat steps 2-6 until there are not enough points left to form a line.
+        7. Save the information about the detected line.
+        8. Repeat steps 2-7 until there are not enough points left to form a line.
 
     I found that adding step 5 gave slightly more reliable detections, so
     I have included it. Note that you could take this further, and perform
@@ -47,16 +48,10 @@ def hough3D(points, directionVectors, latticeSize=64, neighborDistance=0.01, min
 
     Returns
     -------
-    lineDirections : numpy.ndarray[K,3]
-        The vectors giving the directions of detected lines.
+    linePointArr : numpy.ndarray[K,2,3]
+        The position vectors for the start and end of each
+        line.
 
-    lineAnchorPoints : numpy.ndarray[K,3]
-        The position vectors of the anchor point for each line,
-        roughly representing the center of the line (but not
-        exactly).
-
-    lineLengths : numpy.ndarray[K]
-        The length of each line.
     """
     ##############################################
     #              Preparation steps
@@ -109,8 +104,6 @@ def hough3D(points, directionVectors, latticeSize=64, neighborDistance=0.01, min
         # values of x' and y' that aren't relevant...
         xPrime = np.dot(reducedRepMultX, points.T) + systemLengthScale/2
         yPrime = np.dot(reducedRepMultY, points.T) + systemLengthScale/2
-        #xPrime = np.dot(reducedRepMultX, points.T) + systemLengthScale/2
-        #yPrime = np.dot(reducedRepMultY, points.T) + systemLengthScale/2
 
         # Now convert to an index, so we can find the corresponding
         # place on the hough space lattice.
@@ -134,19 +127,13 @@ def hough3D(points, directionVectors, latticeSize=64, neighborDistance=0.01, min
     # and then "unvote" all of the points that are associated with that
     # line, and then repeat the process iteratively
     
-    # # Naively, we just start by taking the maximum cells
-    # maxIndices = np.where(houghSpace >= np.max(houghSpace)*selectionThreshold)
-    # # Convert to a nicer format, so we can directly index using
-    # # maxIndices[i]
-    # maxIndices = [(maxIndices[0][i], maxIndices[1][i], maxIndices[2][i]) for i in range(len(maxIndices[0]))]
-
     # Numba doesn't play well with empty arrays because
     # it can't infer the type of the data, so we just start
     # with an empty line (all zeros) and we will remove
     # it at the end (see return statement).
-    lineDirections = np.zeros((1, 3))
-    lineAnchorPoints = np.zeros((1, 3))
-    lineLengths = np.zeros(1)
+    # First dimension indexes the line, second the start or end point
+    # of the line, and the final dimension is for the space we are in.
+    linePointArr = np.zeros((1, 2, 3))
 
     while True:
         # The highest voted space
@@ -227,17 +214,21 @@ def hough3D(points, directionVectors, latticeSize=64, neighborDistance=0.01, min
 
         for i in range(3):
             anchorPoint[i] = np.mean(nearbyPoints[:,i])
-            
+           
         # Compute the length of the line
-        lineBounds = np.zeros((2, 3))
-        for i in range(3):
-            lineBounds[:,i] = [np.min(nearbyPoints[:,i]), np.max(nearbyPoints[:,i])]
-        length = np.sqrt(np.sum((lineBounds[1] - lineBounds[0])**2))
+        # The best way to do this is to compute the parametric representation
+        # of every point in lineSegmentPoints. Then we can take the maximum and
+        # minimum parametric values, to find how far the line extends in each direction
+        tArr = np.dot(directionVector, (nearbyPoints - anchorPoint).T)
+        lineStart = anchorPoint + np.max(tArr)*directionVector
+        lineEnd = anchorPoint + np.min(tArr)*directionVector
+
+        linePoints = np.zeros((2, 3))
+        linePoints[0] = lineStart
+        linePoints[1] = lineEnd
 
         # Save the information about this line
-        lineDirections = np.concatenate((lineDirections, directionVector[None,:]))
-        lineAnchorPoints = np.concatenate((lineAnchorPoints, anchorPoint[None,:]))
-        lineLengths = np.append(lineLengths, length)
+        linePointArr = np.concatenate((linePointArr, linePoints[None,:,:]))
         
         ##############################################
         #    Removing votes from used points
@@ -283,13 +274,12 @@ def hough3D(points, directionVectors, latticeSize=64, neighborDistance=0.01, min
         # Doesn't work with numba, so you'll have to remove the annotation.
         
         # import open3d as o3d
-        # linePoints = np.array([[lineAnchorPoints[i] - lineDirections[i]*lineLengths[i]/2, lineAnchorPoints[i] + lineDirections[i]*lineLengths[i]/2] for i in range(len(lineDirections))])
         
-        # linePoints = linePoints.reshape((len(linePoints)*2, 3))
+        # flattenedLinePoints = linePointArr.reshape((len(linePointArr)*2, 3))
         
         # lineSet = o3d.geometry.LineSet()
-        # lineSet.points = o3d.utility.Vector3dVector(linePoints)
-        # lineSet.lines = o3d.utility.Vector2iVector([[i,i+1] for i in range(len(linePoints))[::2]])
+        # lineSet.points = o3d.utility.Vector3dVector(flattenedLinePoints)
+        # lineSet.lines = o3d.utility.Vector2iVector([[i,i+1] for i in range(len(flattenedLinePoints))[::2]])
         
         # pcd = o3d.geometry.PointCloud()
         # pcd.points = o3d.utility.Vector3dVector(nearbyPoints)
@@ -300,4 +290,4 @@ def hough3D(points, directionVectors, latticeSize=64, neighborDistance=0.01, min
         ##############################################
 
     # Remove the first entry, since that was a dummy entry
-    return lineDirections[1:], lineAnchorPoints[1:], lineLengths[1:]
+    return linePointArr[1:]
