@@ -91,7 +91,7 @@ def courseGrainField(points, values=None, defaultValue=0, latticeSpacing=None, d
     # In the exceptional case that the data is given as a d dimensional array
     # but the data is actually d-1 dimensional (or d-2, etc.), we will have a value
     # of spacing for that dimension as 0, which will cause a divide by zero error
-    # above. If this is the case, we only need a single entry in that dimension.
+    # below. If this is the case, we only need a single entry in that dimension.
     if hasattr(spacing, '__iter__'):
         spacing[spacing == 0] = 1
     else:

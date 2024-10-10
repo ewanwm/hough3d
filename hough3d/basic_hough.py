@@ -107,8 +107,8 @@ def hough3D(points, directionVectors, latticeSize=128, neighborDistance=0.01, mi
 
         # Now convert to an index, so we can find the corresponding
         # place on the hough space lattice.
-        xIndex = np.floor(xPrime / stepSize).astype(np.uint8)
-        yIndex = np.floor(yPrime / stepSize).astype(np.uint8)
+        xIndex = np.floor(xPrime / stepSize).astype(np.int32)
+        yIndex = np.floor(yPrime / stepSize).astype(np.int32)
 
         # Get rid of indices that are not on our lattice
         validIndices = np.where((xIndex < latticeSize) & (yIndex < latticeSize))[0]
@@ -147,13 +147,14 @@ def hough3D(points, directionVectors, latticeSize=128, neighborDistance=0.01, mi
         # represents in hough space
         xIndex, yIndex, bIndex = maxIndex
 
-        # If we don't have enough points, we finish
-        if houghSpace[xIndex,yIndex,bIndex] < minPointsPerLine:
-            break
-
+        # DEBUG
         #plt.imshow(houghSpace[:,:,bIndex])
         #plt.colorbar()
         #plt.show()
+
+        ##############################################
+        #    Convert from hough space to real space
+        ##############################################
         # Converted from index to reduced coordinates
         xPrime = xIndex*stepSize - systemLengthScale/2
         yPrime = yIndex*stepSize - systemLengthScale/2
@@ -176,13 +177,17 @@ def hough3D(points, directionVectors, latticeSize=128, neighborDistance=0.01, mi
         distancesToPoints = np.array([distancePointToLine(p, anchorPoint, b) for p in points])
         nearbyPointIndices = np.where(distancesToPoints < systemLengthScale*neighborDistance)[0]
 
-        # Now we perform linear regression on those points to fit a line
-        # and increase the accuracy of our detected line
+        # Make sure we have enough points to form a line
         nearbyPoints = points[nearbyPointIndices]
-
 
         if len(nearbyPoints) < minPointsPerLine:
             break
+
+        ##############################################
+        #    Linear regression on nearby points
+        ##############################################
+        # Now we perform linear regression on those points to fit a line
+        # and increase the accuracy of our detected line
 
         # We will use SVD to find the first principle component
         # of the local points, which is equivalent to a linear
@@ -217,7 +222,7 @@ def hough3D(points, directionVectors, latticeSize=128, neighborDistance=0.01, mi
            
         # Compute the length of the line
         # The best way to do this is to compute the parametric representation
-        # of every point in lineSegmentPoints. Then we can take the maximum and
+        # of every point in nearbyPoints. Then we can take the maximum and
         # minimum parametric values, to find how far the line extends in each direction
         tArr = np.dot(directionVector, (nearbyPoints - anchorPoint).T)
         lineStart = anchorPoint + np.max(tArr)*directionVector

@@ -257,3 +257,139 @@ def unravel_3d_index(index, shape):
 
     return properIndex
 
+def animateGeometries(geometries, outputFile='animation', rotationSpeed=5, maxFrames=None, fps=30, pointSize=7, lineWidth=5, zoom=0.8, backgroundColor=[1,1,1], crop=False, cropPadding=10, outputFormat='gif'):
+    """
+    Create an animation of a set of geometries rotating.
+
+    Uses Open3D as the graphical framework.
+
+    Parameters
+    ----------
+    geometries : list(open3d.geometry.Geometry)
+        The list of geometries to draw, eg. point clouds, line sets, etc.
+
+    outputFile : str
+        The name of the animation file that will be saved. If it includes
+        an (acceptable) extension, the output type will be automatically
+        chosen; otherwise, the output format will be set by the
+        kwarg `outputFormat`.
+
+    rotationSpeed : int
+        The speed of the rotation during the animation.
+
+    maxFrames : int or None
+        The total number of frames to save; if `None`, no limit will
+        be applied.
+
+        Note that I can't figure out how to exit a window automatically,
+        so the window itself will continue existing until the user manually
+        presses 'q', but no more than `maxFrames` will actually be saved.
+
+    fps : int
+        The frames per second of the output animation.
+
+    pointSize : float
+        The size of points for point clouds.
+
+    lineWidth : float
+        The width of lines for line sets (WIP).
+
+    zoom : float
+        The zoom setting for the view.
+
+    backgroundColor : [float, float, float]
+        The background color for the animation.
+
+    crop : bool
+        Whether to crop the animation to a minimal window size (plus
+        padding) that only includes pixels that actually change
+        during the animation.
+
+    cropPadding : int
+        The amount of padding to add around the animation if
+        `crop=True`.
+
+    outputFormat : 'gif' or 'mp4'
+        The output format for the animation. Overridden if an extension is
+        directly included in the file name (`outputFile`).
+        
+    """
+    # Import these here since they are needed in the rest of this file
+    # and this is sortof a debug method
+    import cv2
+    from PIL import Image
+    import open3d as o3d
+
+    ALLOWED_FORMATS = ['gif', 'mp4']
+
+    # Try to infer the output format from the file name
+    potentialExtension = outputFile.split('.')[-1].lower()
+    if potentialExtension in ALLOWED_FORMATS:
+        outputFormat = potentialExtension
+        fullOutputPath = outputFile
+    else:
+        # Otherwise, we have to append whatever the provided extension is
+        outputFormat = outputFormat.lower()
+
+        # But first make sure the provided format is allowed
+        if outputFormat not in ALLOWED_FORMATS:
+            raise Exception(f'Invalid output format specified: {outputFormat}; available options are {ALLOWED_FORMATS}.')
+
+        fullOutputPath = f'{outputFile}.{outputFormat}'
+
+    images = []
+
+    def update_view(vis):
+        opt = vis.get_render_option()
+        opt.background_color = np.asarray(backgroundColor)
+
+        vis.get_render_option().point_size = pointSize
+        vis.get_render_option().line_width = lineWidth
+
+
+        ctr = vis.get_view_control()
+        ctr.rotate(rotationSpeed, 0)
+        ctr.set_zoom(zoom)
+
+        if maxFrames is None or len(images) < maxFrames:
+            image = (np.array(vis.capture_screen_float_buffer(False))*255).astype(np.uint8)
+            images.append((image).astype(np.uint8))
+
+        return False
+
+    o3d.visualization.draw_geometries_with_animation_callback(geometries,
+                                                              update_view)
+
+    if crop:
+        # If we want to crop, we should see if there are any pixels that only
+        # ever take on the value of the background color
+        usedPixels = np.sum(np.array(images) - np.array(backgroundColor)*255, axis=0)
+        usedPixels = np.sum(usedPixels**2, axis=-1)
+
+        usedIndices = np.array(np.where(usedPixels > 1e-8))
+        cropBounds = [max(np.min(usedIndices[0])-cropPadding, 0),
+                      min(np.max(usedIndices[0])+cropPadding, images[0].shape[0]),
+                      max(np.min(usedIndices[1])-cropPadding, 0),
+                      min(np.max(usedIndices[1])+cropPadding, images[0].shape[1])]
+
+    else:
+        cropBounds = [0, images[0].shape[1], 0, images[0].shape[0]]
+
+    for i in range(len(images)):
+        images[i] = images[i][cropBounds[0]:cropBounds[1],cropBounds[2]:cropBounds[3]]
+
+    if outputFormat == 'mp4':
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        video = cv2.VideoWriter(fullOutputPath, fourcc, fps, (images[0].shape[1], images[0].shape[0]))
+
+        for image in images:
+            video.write(cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+
+        video.release()
+
+    if outputFormat == 'gif':
+        for i in range(len(images)):
+            images[i] = Image.fromarray(images[i])
+
+        images[0].save(fullOutputPath, save_all=True, append_images=images[1:], loop=0, duration=int(1/fps*1e3))
+
