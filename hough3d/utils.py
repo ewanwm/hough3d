@@ -257,7 +257,7 @@ def unravel_3d_index(index, shape):
 
     return properIndex
 
-def animateGeometries(geometries, outputFile=None, rotationSpeed=5, maxFrames=None, fps=30, pointSize=7, lineWidth=5, zoom=0.8, backgroundColor=[1,1,1], crop=False, cropPadding=10, outputFormat='gif'):
+def animateGeometries(geometries, outputFile=None, rotationSpeed=5, maxFrames=None, fps=30, pointSize=7, lineWidth=5, zoom=0.8, backgroundColor=[1,1,1], crop=False, cropPadding=10, downsample=1, outputFormat='gif'):
     """
     Create an animation of a set of geometries rotating.
 
@@ -384,7 +384,7 @@ def animateGeometries(geometries, outputFile=None, rotationSpeed=5, maxFrames=No
         cropBounds = [0, images[0].shape[1], 0, images[0].shape[0]]
 
     for i in range(len(images)):
-        images[i] = images[i][cropBounds[0]:cropBounds[1],cropBounds[2]:cropBounds[3]]
+        images[i] = images[i][cropBounds[0]:cropBounds[1],cropBounds[2]:cropBounds[3]][::downsample,::downsample]
 
     if outputFormat == 'mp4':
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')

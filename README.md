@@ -18,6 +18,8 @@ The authors of the cited paper have implemented a C++ version [here](https://git
 
 ### Usage
 
+For test data, I would recommend looking at the [datasets in the C++ repo](https://github.com/cdalitz/hough-3d-lines/tree/master/data).
+
 ```
 from hough3d import hough3D
 
