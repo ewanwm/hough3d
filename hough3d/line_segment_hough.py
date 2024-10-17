@@ -1,3 +1,6 @@
+import numpy as np
+import numba
+
 from .utils import reducedRepConversionMatrices, distancePointToLine, unravel_3d_index
 
 """
