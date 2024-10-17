@@ -5,7 +5,6 @@ clear_ipynb.py
 
 ## Images
 images/
-*.gif
 
 ## C++
 

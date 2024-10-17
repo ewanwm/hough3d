@@ -295,4 +295,5 @@ def hough3D(points, directionVectors, latticeSize=128, neighborDistance=0.01, mi
         ##############################################
 
     # Remove the first entry, since that was a dummy entry
-    return linePointArr[1:]
+    # And we have to translate the point could back to its original position
+    return linePointArr[1:] + pointCloudTranslation

@@ -257,7 +257,7 @@ def unravel_3d_index(index, shape):
 
     return properIndex
 
-def animateGeometries(geometries, outputFile='animation', rotationSpeed=5, maxFrames=None, fps=30, pointSize=7, lineWidth=5, zoom=0.8, backgroundColor=[1,1,1], crop=False, cropPadding=10, outputFormat='gif'):
+def animateGeometries(geometries, outputFile=None, rotationSpeed=5, maxFrames=None, fps=30, pointSize=7, lineWidth=5, zoom=0.8, backgroundColor=[1,1,1], crop=False, cropPadding=10, outputFormat='gif'):
     """
     Create an animation of a set of geometries rotating.
 
@@ -268,11 +268,14 @@ def animateGeometries(geometries, outputFile='animation', rotationSpeed=5, maxFr
     geometries : list(open3d.geometry.Geometry)
         The list of geometries to draw, eg. point clouds, line sets, etc.
 
-    outputFile : str
+    outputFile : str or None
         The name of the animation file that will be saved. If it includes
         an (acceptable) extension, the output type will be automatically
         chosen; otherwise, the output format will be set by the
         kwarg `outputFormat`.
+
+        If `None`, no file will be saved, the animation will just be
+        played.
 
     rotationSpeed : int
         The speed of the rotation during the animation.
@@ -322,20 +325,21 @@ def animateGeometries(geometries, outputFile='animation', rotationSpeed=5, maxFr
 
     ALLOWED_FORMATS = ['gif', 'mp4']
 
-    # Try to infer the output format from the file name
-    potentialExtension = outputFile.split('.')[-1].lower()
-    if potentialExtension in ALLOWED_FORMATS:
-        outputFormat = potentialExtension
-        fullOutputPath = outputFile
-    else:
-        # Otherwise, we have to append whatever the provided extension is
-        outputFormat = outputFormat.lower()
+    if outputFile is not None:
+        # Try to infer the output format from the file name
+        potentialExtension = outputFile.split('.')[-1].lower()
+        if potentialExtension in ALLOWED_FORMATS:
+            outputFormat = potentialExtension
+            fullOutputPath = outputFile
+        else:
+            # Otherwise, we have to append whatever the provided extension is
+            outputFormat = outputFormat.lower()
 
-        # But first make sure the provided format is allowed
-        if outputFormat not in ALLOWED_FORMATS:
-            raise Exception(f'Invalid output format specified: {outputFormat}; available options are {ALLOWED_FORMATS}.')
+            # But first make sure the provided format is allowed
+            if outputFormat not in ALLOWED_FORMATS:
+                raise Exception(f'Invalid output format specified: {outputFormat}; available options are {ALLOWED_FORMATS}.')
 
-        fullOutputPath = f'{outputFile}.{outputFormat}'
+            fullOutputPath = f'{outputFile}.{outputFormat}'
 
     images = []
 
@@ -351,7 +355,7 @@ def animateGeometries(geometries, outputFile='animation', rotationSpeed=5, maxFr
         ctr.rotate(rotationSpeed, 0)
         ctr.set_zoom(zoom)
 
-        if maxFrames is None or len(images) < maxFrames:
+        if outputFile is not None and (maxFrames is None or len(images) < maxFrames):
             image = (np.array(vis.capture_screen_float_buffer(False))*255).astype(np.uint8)
             images.append((image).astype(np.uint8))
 
@@ -359,6 +363,10 @@ def animateGeometries(geometries, outputFile='animation', rotationSpeed=5, maxFr
 
     o3d.visualization.draw_geometries_with_animation_callback(geometries,
                                                               update_view)
+
+    if outputFile is None:
+        return
+
 
     if crop:
         # If we want to crop, we should see if there are any pixels that only
