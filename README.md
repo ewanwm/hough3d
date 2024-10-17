@@ -1,5 +1,7 @@
 ## hough3d
 
+![Animated gif showing the results on a test dataset.](https://raw.githubusercontent.com/Jfeatherstone/hough3d/refs/heads/master/test_images/synthetic_b.gif)
+
 This is a python library to perform a Hough transform to detect lines in 3D point clouds. We implement the iterative algorithm described in Dalitz et al. (2017):
 
 1. Direction vectors in 3D are discretized as the position vectors for the vertices of a tessellated icosahedron.
@@ -13,7 +15,6 @@ This method has the advantage of being able to identify numerous lines without t
 
 The authors of the cited paper have implemented a C++ version [here](https://github.com/cdalitz/hough-3d-lines/). I am currently working on trying to improve the algorithm specifically to detect line segments accurately, but for now this library functions equivalently to the C++ one. Functions are transpiled with [numba](https://numba.readthedocs.io/), so there shouldn't be a huge difference in computation time despite this one being written in Python.
 
-![Animated gif showing the results on a test dataset.]()
 
 ### Usage
 
