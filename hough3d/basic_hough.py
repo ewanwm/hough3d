@@ -1,58 +1,11 @@
 import numpy as np
 import numba
 
-from .utils import reducedRepConversionMatrices, distancePointToLine, unravel_3d_index
+
+from .utils import genIcosahedron, reducedRepConversionMatrices, distancePointToLine, unravel_3d_index
 
 @numba.njit(cache=True)
-def hough3D(points, directionVectors, latticeSize=128, neighborDistance=0.01, minPointsPerLine=5):
-    """
-    Perform line detection on a 3D point cloud.
-
-    This version of the function is follows the algorithm described in
-    the original paper [1] (except for step 5):
-        1. Have all points vote in the hough space.
-        2. Take the highest voted cell as an initial guess for a new line.
-        3. Find all points less than a certain distance to the initial line.
-        4. Perform linear regression on the nearby points to refine the line.
-        5. Update which points are nearby to the line based on the updated line (NEW).
-        6. Have all of the points that are part of this line reverse their vote.
-        7. Save the information about the detected line.
-        8. Repeat steps 2-7 until there are not enough points left to form a line.
-
-    I found that adding step 5 gave slightly more reliable detections, so
-    I have included it. Note that you could take this further, and perform
-    several steps of fitting and updating, but here we just do one.
-    
-    Parameters
-    ----------
-    points : numpy.ndarray[N,3]
-        Points representing the point cloud.
-
-    directionVectors : numpy.ndarray[M,3]
-        Direction vectors represented the discretized directions for
-        the lines. Normally generated with `genIcosahedron()`.
-
-    latticeSize : int
-        The number of discrete boxes to use for the intercept variables in
-        hough space.
-
-    neighborDistance : float
-        The distance a point can be from the initial guess of a
-        line for it to be included in the linear regression
-        used to refine the line parameters. Given as fraction of
-        the total system size (diagonal length of the bounding box).
-
-    minPointsPerLine : int
-        The minimum number of points that must be part of a line
-        detection for that line to be included in the final result.
-
-    Returns
-    -------
-    linePointArr : numpy.ndarray[K,2,3]
-        The position vectors for the start and end of each
-        line.
-
-    """
+def _hough3D(points, directionVectors, stepSize, neighborDistance=0.01, minPointsPerLine=5):
     ##############################################
     #              Preparation steps
     ##############################################
@@ -75,7 +28,7 @@ def hough3D(points, directionVectors, latticeSize=128, neighborDistance=0.01, mi
 
     systemLengthScale = np.sqrt(np.sum((bounds[1] - bounds[0])**2))
 
-    stepSize = systemLengthScale / latticeSize
+    latticeSize = int(np.ceil(systemLengthScale / stepSize))
 
     # Our hough space will be a three dimensional array, with the first two
     # dimensions representing the reduced coordinates x' and y' for the
@@ -175,7 +128,8 @@ def hough3D(points, directionVectors, latticeSize=128, neighborDistance=0.01, mi
         # a perpendicular one that passes through every point, and then
         # find the distance from intersection to the respective point.
         distancesToPoints = np.array([distancePointToLine(p, anchorPoint, b) for p in points])
-        nearbyPointIndices = np.where(distancesToPoints < systemLengthScale*neighborDistance)[0]
+
+        nearbyPointIndices = np.where(distancesToPoints < neighborDistance)[0]
 
         # Make sure we have enough points to form a line
         nearbyPoints = points[nearbyPointIndices]
@@ -211,7 +165,7 @@ def hough3D(points, directionVectors, latticeSize=128, neighborDistance=0.01, mi
         # NOTE: this is different from the original paper, as they do not
         # perform this step. I find it helps, so I've included it.
         distancesToPoints = np.array([distancePointToLine(p, anchorPoint, directionVector) for p in points])
-        nearbyPointIndices = np.where(distancesToPoints < systemLengthScale*neighborDistance)[0]
+        nearbyPointIndices = np.where(distancesToPoints < neighborDistance)[0]
         nearbyPoints = points[nearbyPointIndices]
 
         if len(nearbyPoints) < minPointsPerLine:
@@ -297,3 +251,77 @@ def hough3D(points, directionVectors, latticeSize=128, neighborDistance=0.01, mi
     # Remove the first entry, since that was a dummy entry
     # And we have to translate the point could back to its original position
     return linePointArr[1:] + pointCloudTranslation
+
+
+class Hough3D:
+    """
+    Perform line detection on a 3D point cloud.
+
+    This version of the function is follows the algorithm described in
+    the original paper [1] (except for step 5):
+        1. Have all points vote in the hough space.
+        2. Take the highest voted cell as an initial guess for a new line.
+        3. Find all points less than a certain distance to the initial line.
+        4. Perform linear regression on the nearby points to refine the line.
+        5. Update which points are nearby to the line based on the updated line (NEW).
+        6. Have all of the points that are part of this line reverse their vote.
+        7. Save the information about the detected line.
+        8. Repeat steps 2-7 until there are not enough points left to form a line.
+
+    I found that adding step 5 gave slightly more reliable detections, so
+    I have included it. Note that you could take this further, and perform
+    several steps of fitting and updating, but here we just do one.
+    
+    Parameters
+    ----------
+    points : numpy.ndarray[N,3]
+        Points representing the point cloud.
+
+    directionVectors : numpy.ndarray[M,3]
+        Direction vectors represented the discretized directions for
+        the lines. Normally generated with `genIcosahedron()`.
+
+    latticeSize : int
+        The number of discrete boxes to use for the intercept variables in
+        hough space.
+
+    neighborDistance : float
+        The distance a point can be from the initial guess of a
+        line for it to be included in the linear regression
+        used to refine the line parameters. Given as fraction of
+        the total system size (diagonal length of the bounding box).
+
+    minPointsPerLine : int
+        The minimum number of points that must be part of a line
+        detection for that line to be included in the final result.
+
+    Returns
+    -------
+    linePointArr : numpy.ndarray[K,2,3]
+        The position vectors for the start and end of each
+        line.
+
+    """
+
+    def __init__(
+        self, 
+        directions_divisions:int=5, 
+        lattice_step_size:float= 5.0,
+        neighbour_dist:float= 15.0,
+        min_points_per_line = 5,
+        max_dist:float = 30.0
+    ):
+
+        self._neighbour_dist = neighbour_dist
+        self._min_points_per_line = min_points_per_line
+        self._max_dist = max_dist
+
+        self._lattice_step_size = lattice_step_size
+
+        ## create the array of direction vectors by subdividing an icosahedron
+        ## this gives ~ evenly spaced unit direction vectors
+        self._directions = genIcosahedron(directions_divisions)
+
+    def __call__(self, points):
+
+        return _hough3D(points, self._directions, self._lattice_step_size, self._neighbour_dist, self._min_points_per_line)
