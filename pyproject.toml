@@ -1,0 +1,41 @@
+[project]
+name='hough3d'  
+version='1.0.0'
+authors=[
+    {name = "Jack Featherstone", email = "jack.featherstone@oist.jp"},
+    {name = "Ewan Miller", email="emiller@ifae.es"}
+]
+
+license='MIT'
+description="Library for detecting lines in a 3D point cloud via Hough transform."
+
+classifiers=[
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: OS Independent",
+]
+
+readme = "README.md"
+
+
+maintainers = [
+    {name = "Ewan Miller", email="emiller@ifae.es"},
+]
+
+dependencies = [
+  "numba",
+  "numpy",
+  "matplotlib",
+  "scipy"
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = [
+    "hough3d"
+]
+
+[project.urls]
+Homepage = 'https://github.com/ewanwm/hough3d'
